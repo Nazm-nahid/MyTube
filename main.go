@@ -40,6 +40,15 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	bucket := os.Getenv("GCS_BUCKET")
+	if bucket == "" {
+		return errors.New("GCS_BUCKET is required")
+	}
+	ttl, err := time.ParseDuration(env("UPLOAD_URL_TTL", "15m"))
+	if err != nil {
+		return err
+	}
+
 	pool, err := pgxpool.New(ctx, env("DATABASE_URL", "postgres://videos:videos@localhost:5433/videos"))
 	if err != nil {
 		return err
@@ -51,9 +60,15 @@ func run() error {
 		return err
 	}
 
+	storage, err := NewStorage(ctx, bucket, ttl)
+	if err != nil {
+		return err
+	}
+	defer storage.Close()
+
 	srv := &http.Server{
 		Addr:              env("ADDR", ":8080"),
-		Handler:           (&Server{store: store}).Routes(),
+		Handler:           (&Server{store: store, storage: storage}).Routes(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

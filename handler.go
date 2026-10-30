@@ -5,12 +5,18 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
 
+// A single PUT cannot resume after a failure, so larger files would need
+// resumable uploads.
+const maxVideoBytes = 5 << 30
+
 type Server struct {
-	store *Store
+	store   *Store
+	storage *Storage
 }
 
 func (s *Server) Routes() http.Handler {
@@ -29,6 +35,13 @@ type createVideoRequest struct {
 	SizeBytes   int64  `json:"size_bytes"`
 }
 
+type createVideoResponse struct {
+	Video         *Video            `json:"video"`
+	UploadURL     string            `json:"upload_url"`
+	UploadHeaders map[string]string `json:"upload_headers"`
+	ExpiresAt     time.Time         `json:"expires_at"`
+}
+
 func (r createVideoRequest) validate() string {
 	switch {
 	case strings.TrimSpace(r.Title) == "":
@@ -39,6 +52,8 @@ func (r createVideoRequest) validate() string {
 		return "content_type must be a video type"
 	case r.SizeBytes <= 0:
 		return "size_bytes must be positive"
+	case r.SizeBytes > maxVideoBytes:
+		return "size_bytes exceeds the 5 GiB limit"
 	}
 	return ""
 }
@@ -62,11 +77,19 @@ func (s *Server) createVideo(w http.ResponseWriter, r *http.Request) {
 		ContentType: req.ContentType,
 		SizeBytes:   req.SizeBytes,
 	}
+
+	// Signing first avoids leaving a row behind for a video that can never be
+	// uploaded.
+	url, headers, expiresAt, err := s.storage.SignUpload("videos/"+v.ID.String(), v.ContentType, v.SizeBytes)
+	if err != nil {
+		internalError(w, "sign upload", err)
+		return
+	}
 	if err := s.store.Create(r.Context(), v); err != nil {
 		internalError(w, "create video", err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, v)
+	writeJSON(w, http.StatusCreated, createVideoResponse{Video: v, UploadURL: url, UploadHeaders: headers, ExpiresAt: expiresAt})
 }
 
 func (s *Server) listVideos(w http.ResponseWriter, r *http.Request) {

@@ -8,6 +8,7 @@
   body { font: 16px/1.5 system-ui, sans-serif; max-width: 32rem; margin: 3rem auto; padding: 0 1rem; }
   label { display: block; margin-bottom: 1rem; }
   input, textarea { display: block; width: 100%; box-sizing: border-box; margin-top: .25rem; padding: .5rem; font: inherit; }
+  progress { width: 100%; }
 </style>
 </head>
 <body>
@@ -19,13 +20,28 @@
   <label>Video <input name="file" type="file" accept="video/*" required></label>
   <button id="submit">Upload</button>
 </form>
+<p><progress id="progress" max="100" value="0" hidden></progress></p>
 <p id="status" role="status"></p>
 <script>
 const form = document.getElementById('form');
 const submit = document.getElementById('submit');
+const progress = document.getElementById('progress');
 const status = document.getElementById('status');
 
-// Only the file's details are sent. The file itself stays on this device.
+// fetch cannot report upload progress, so the PUT uses XMLHttpRequest.
+function put(url, headers, file) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', url);
+    for (const [name, value] of Object.entries(headers)) xhr.setRequestHeader(name, value);
+    xhr.upload.onprogress = e => { progress.value = e.loaded / e.total * 100; };
+    xhr.onload = () => xhr.status < 300 ? resolve() : reject(new Error(`upload failed (${xhr.status})`));
+    xhr.onerror = () => reject(new Error('upload failed: could not reach storage'));
+    xhr.send(file);
+  });
+}
+
+// The file goes straight to the bucket and never passes through the API.
 form.addEventListener('submit', async e => {
   e.preventDefault();
   const data = new FormData(form);
@@ -46,6 +62,9 @@ form.addEventListener('submit', async e => {
     });
     const body = await res.json();
     if (!res.ok) throw new Error(body.error);
+    status.textContent = 'Uploading…';
+    progress.hidden = false;
+    await put(body.upload_url, body.upload_headers, file);
     location.href = '/';
   } catch (err) {
     status.textContent = err.message;
