@@ -11,7 +11,9 @@ set -a; source .env; set +a
 go run .
 ```
 
-Compose runs Postgres on port 5433.
+Open http://localhost:8080 for the video list, or
+http://localhost:8080/upload.html for the upload screen. Compose runs Postgres
+on port 5433.
 
 ## API
 

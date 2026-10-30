@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Upload a video</title>
+<style>
+  body { font: 16px/1.5 system-ui, sans-serif; max-width: 32rem; margin: 3rem auto; padding: 0 1rem; }
+  label { display: block; margin-bottom: 1rem; }
+  input, textarea { display: block; width: 100%; box-sizing: border-box; margin-top: .25rem; padding: .5rem; font: inherit; }
+</style>
+</head>
+<body>
+<h1>Upload a video</h1>
+<p><a href="/">Back to videos</a></p>
+<form id="form">
+  <label>Title <input name="title" required></label>
+  <label>Description <textarea name="description" rows="3"></textarea></label>
+  <label>Video <input name="file" type="file" accept="video/*" required></label>
+  <button id="submit">Upload</button>
+</form>
+<p id="status" role="status"></p>
+<script>
+const form = document.getElementById('form');
+const submit = document.getElementById('submit');
+const status = document.getElementById('status');
+
+// Only the file's details are sent. The file itself stays on this device.
+form.addEventListener('submit', async e => {
+  e.preventDefault();
+  const data = new FormData(form);
+  const file = data.get('file');
+  submit.disabled = true;
+  try {
+    status.textContent = 'Saving…';
+    const res = await fetch('/videos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: data.get('title'),
+        description: data.get('description'),
+        filename: file.name,
+        content_type: file.type,
+        size_bytes: file.size,
+      }),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error);
+    location.href = '/';
+  } catch (err) {
+    status.textContent = err.message;
+    submit.disabled = false;
+  }
+});
+</script>
+</body>
+</html>

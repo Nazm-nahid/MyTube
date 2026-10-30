@@ -17,6 +17,7 @@ func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /videos", s.createVideo)
 	mux.HandleFunc("GET /videos", s.listVideos)
+	mux.Handle("GET /", http.FileServerFS(webFS()))
 	return mux
 }
 

@@ -2,8 +2,9 @@ package main
 
 import (
 	"context"
-	_ "embed"
+	"embed"
 	"errors"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -16,6 +17,17 @@ import (
 
 //go:embed schema.sql
 var schema string
+
+//go:embed web
+var web embed.FS
+
+func webFS() fs.FS {
+	sub, err := fs.Sub(web, "web")
+	if err != nil {
+		panic(err)
+	}
+	return sub
+}
 
 func main() {
 	if err := run(); err != nil {

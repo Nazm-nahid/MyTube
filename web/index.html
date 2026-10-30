@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Videos</title>
+<style>
+  body { font: 16px/1.5 system-ui, sans-serif; max-width: 48rem; margin: 3rem auto; padding: 0 1rem; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: .5rem; border-bottom: 1px solid #ccc; text-align: left; overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<h1>Videos</h1>
+<p><a href="/upload.html">Upload a video</a></p>
+<table hidden id="table">
+  <thead>
+    <tr><th>Title</th><th>Description</th><th>Filename</th><th>Size</th><th>Uploaded</th></tr>
+  </thead>
+  <tbody id="rows"></tbody>
+</table>
+<p id="status" role="status">Loading…</p>
+<script>
+const table = document.getElementById('table');
+const rows = document.getElementById('rows');
+const status = document.getElementById('status');
+
+function formatSize(bytes) {
+  const mb = bytes / (1024 * 1024);
+  return mb < 1 ? `${bytes} bytes` : `${mb.toFixed(1)} MB`;
+}
+
+async function load() {
+  try {
+    const res = await fetch('/videos');
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error);
+    for (const v of body) {
+      const row = rows.insertRow();
+      const cells = [v.title, v.description, v.filename, formatSize(v.size_bytes), new Date(v.created_at).toLocaleString()];
+      for (const text of cells) row.insertCell().textContent = text;
+    }
+    table.hidden = body.length === 0;
+    status.textContent = body.length === 0 ? 'No videos yet.' : '';
+  } catch (err) {
+    status.textContent = err.message;
+  }
+}
+
+load();
+</script>
+</body>
+</html>
