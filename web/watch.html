@@ -27,21 +27,35 @@ function fail(message) {
   status.textContent = message;
 }
 
+function playHls(url) {
+  const hls = new Hls();
+  hls.on(Hls.Events.FRAG_LOADED, () => { status.textContent = ''; });
+  hls.on(Hls.Events.ERROR, (_, data) => {
+    if (!data.fatal) return;
+    if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+      status.textContent = 'Connection lost. Retrying…';
+      setTimeout(() => hls.startLoad(), 3000);
+    } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+      hls.recoverMediaError();
+    } else {
+      fail('This video could not be loaded.');
+    }
+  });
+  hls.loadSource(url);
+  hls.attachMedia(player);
+}
+
 async function load() {
   try {
     const res = await fetch(`/videos/${encodeURIComponent(params.get('id'))}/stream`);
     const body = await res.json();
     if (!res.ok) throw new Error(res.status === 404 ? 'This video was never uploaded.' : body.error);
-    player.onerror = () => fail('This browser cannot play this video format.');
-    // Safari plays HLS natively. Other browsers need hls.js.
-    if (body.format === 'hls' && !player.canPlayType('application/vnd.apple.mpegurl')) {
-      const hls = new Hls();
-      hls.on(Hls.Events.ERROR, (_, data) => {
-        if (data.fatal) fail('This video could not be loaded.');
-      });
-      hls.loadSource(body.stream_url);
-      hls.attachMedia(player);
+    // Prefer hls.js even where HLS is native, as in recent Chrome, because the
+    // native player gives up on the first network error.
+    if (body.format === 'hls' && Hls.isSupported()) {
+      playHls(body.stream_url);
     } else {
+      player.onerror = () => fail('This browser cannot play this video format.');
       player.src = body.stream_url;
     }
   } catch (err) {
