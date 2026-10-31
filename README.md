@@ -1,4 +1,4 @@
-# Video streaming service
+# BanglaTube
 
 A small YouTube-style service written in Go. It stores video metadata in
 Postgres, uploads files directly to a private Google Cloud Storage (GCS) bucket,
@@ -166,6 +166,7 @@ seconds, and recovers from media errors.
 | `web/index.html` | Video list |
 | `web/upload.html` | Upload screen |
 | `web/watch.html` | Video player |
+| `web/app.css` | Shared styles for the web pages |
 | `docker-compose.yml` | Local Postgres |
 | `.env.example` | Example settings |
 

@@ -3,31 +3,69 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Videos</title>
-<style>
-  body { font: 16px/1.5 system-ui, sans-serif; max-width: 48rem; margin: 3rem auto; padding: 0 1rem; }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { padding: .5rem; border-bottom: 1px solid #ccc; text-align: left; overflow-wrap: anywhere; }
-</style>
+<title>BanglaTube</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 26'%3E%3Crect width='36' height='26' rx='6' fill='%23006a4e'/%3E%3Ccircle cx='16' cy='13' r='8.5' fill='%23f42a41'/%3E%3Cpath d='M13 8.5v9l7-4.5z' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="/app.css">
 </head>
 <body>
-<h1>Videos</h1>
-<p><a href="/upload.html">Upload a video</a></p>
-<table hidden id="table">
-  <thead>
-    <tr><th>Title</th><th>Description</th><th>Filename</th><th>Size</th><th>Uploaded</th><th></th></tr>
-  </thead>
-  <tbody id="rows"></tbody>
-</table>
-<p id="status" role="status">Loading…</p>
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="/">
+      <svg viewBox="0 0 36 26" aria-hidden="true"><rect width="36" height="26" rx="6" fill="#006a4e"/><circle cx="16" cy="13" r="8.5" fill="#f42a41"/><path d="M13 8.5v9l7-4.5z" fill="#fff"/></svg>
+      <b>Bangla<span>Tube</span></b>
+    </a>
+    <a class="button" href="/upload.html">Upload</a>
+  </div>
+</header>
+<main>
+  <section class="hero">
+    <h1>Watch, share, <em>stream.</em></h1>
+    <p>Every video on BanglaTube, in one place.</p>
+  </section>
+  <section class="grid" id="grid" hidden></section>
+  <p class="status" id="status" role="status">Loading…</p>
+  <div class="empty" id="empty" hidden>
+    <p>No videos yet. Be the first to upload one.</p>
+    <a class="button" href="/upload.html">Upload a video</a>
+  </div>
+</main>
 <script>
-const table = document.getElementById('table');
-const rows = document.getElementById('rows');
+const grid = document.getElementById('grid');
 const status = document.getElementById('status');
+const empty = document.getElementById('empty');
 
 function formatSize(bytes) {
   const mb = bytes / (1024 * 1024);
   return mb < 1 ? `${bytes} bytes` : `${mb.toFixed(1)} MB`;
+}
+
+// There are no thumbnails yet, so each video gets its own placement of the
+// flag's circle, taken from its ID so it stays the same between visits.
+function placeCircle(thumb, id) {
+  const n = parseInt(id.slice(0, 4), 16);
+  thumb.style.setProperty('--dot-x', `${30 + n % 40}%`);
+  thumb.style.setProperty('--dot-y', `${42 + (n >> 6) % 16}%`);
+}
+
+function card(v) {
+  const link = document.createElement('a');
+  link.className = 'card';
+  link.href = `/watch.html?${new URLSearchParams({ id: v.id, title: v.title })}`;
+  link.innerHTML = `
+    <div class="thumb"><span class="play"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v18l15-9z"/></svg></span></div>
+    <div class="card-body"><h2></h2><p></p><div class="meta"><span></span><span></span><span></span></div></div>`;
+  placeCircle(link.querySelector('.thumb'), v.id);
+  link.querySelector('h2').textContent = v.title;
+  const description = link.querySelector('p');
+  description.textContent = v.description;
+  description.hidden = !v.description;
+  const meta = link.querySelectorAll('.meta span');
+  meta[0].textContent = v.filename;
+  meta[1].textContent = formatSize(v.size_bytes);
+  meta[2].textContent = new Date(v.created_at).toLocaleString();
+  return link;
 }
 
 async function load() {
@@ -35,17 +73,10 @@ async function load() {
     const res = await fetch('/videos');
     const body = await res.json();
     if (!res.ok) throw new Error(body.error);
-    for (const v of body) {
-      const row = rows.insertRow();
-      const cells = [v.title, v.description, v.filename, formatSize(v.size_bytes), new Date(v.created_at).toLocaleString()];
-      for (const text of cells) row.insertCell().textContent = text;
-      const play = document.createElement('a');
-      play.href = `/watch.html?${new URLSearchParams({ id: v.id, title: v.title })}`;
-      play.textContent = 'Play';
-      row.insertCell().append(play);
-    }
-    table.hidden = body.length === 0;
-    status.textContent = body.length === 0 ? 'No videos yet.' : '';
+    grid.append(...body.map(card));
+    grid.hidden = body.length === 0;
+    empty.hidden = body.length !== 0;
+    status.textContent = '';
   } catch (err) {
     status.textContent = err.message;
   }

@@ -3,30 +3,59 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Upload a video</title>
-<style>
-  body { font: 16px/1.5 system-ui, sans-serif; max-width: 32rem; margin: 3rem auto; padding: 0 1rem; }
-  label { display: block; margin-bottom: 1rem; }
-  input, textarea { display: block; width: 100%; box-sizing: border-box; margin-top: .25rem; padding: .5rem; font: inherit; }
-  progress { width: 100%; }
-</style>
+<title>Upload · BanglaTube</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 26'%3E%3Crect width='36' height='26' rx='6' fill='%23006a4e'/%3E%3Ccircle cx='16' cy='13' r='8.5' fill='%23f42a41'/%3E%3Cpath d='M13 8.5v9l7-4.5z' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="/app.css">
 </head>
 <body>
-<h1>Upload a video</h1>
-<p><a href="/">Back to videos</a></p>
-<form id="form">
-  <label>Title <input name="title" required></label>
-  <label>Description <textarea name="description" rows="3"></textarea></label>
-  <label>Video <input name="file" type="file" accept="video/*" required></label>
-  <button id="submit">Upload</button>
-</form>
-<p><progress id="progress" max="100" value="0" hidden></progress></p>
-<p id="status" role="status"></p>
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="/">
+      <svg viewBox="0 0 36 26" aria-hidden="true"><rect width="36" height="26" rx="6" fill="#006a4e"/><circle cx="16" cy="13" r="8.5" fill="#f42a41"/><path d="M13 8.5v9l7-4.5z" fill="#fff"/></svg>
+      <b>Bangla<span>Tube</span></b>
+    </a>
+  </div>
+</header>
+<main class="narrow">
+  <section class="hero">
+    <h1>Upload a <em>video</em></h1>
+    <p>Your video is ready to watch as soon as it finishes uploading.</p>
+  </section>
+  <form class="panel" id="form">
+    <label class="drop" id="drop">
+      <input name="file" id="file" type="file" accept="video/*" required>
+      <strong id="file-name">Choose a video or drop it here</strong>
+      <small id="file-hint">Up to 5 GB</small>
+    </label>
+    <label class="field">Title <input name="title" required></label>
+    <label class="field">Description <textarea name="description" rows="3"></textarea></label>
+    <button class="button" id="submit">Upload</button>
+    <div class="progress" id="progress" hidden>
+      <div class="progress-track"><div class="progress-bar" id="bar"></div></div>
+    </div>
+    <p class="status" id="status" role="status"></p>
+  </form>
+</main>
 <script>
 const form = document.getElementById('form');
 const submit = document.getElementById('submit');
 const progress = document.getElementById('progress');
+const bar = document.getElementById('bar');
 const status = document.getElementById('status');
+const drop = document.getElementById('drop');
+const fileInput = document.getElementById('file');
+
+function showFile() {
+  const file = fileInput.files[0];
+  document.getElementById('file-name').textContent = file ? file.name : 'Choose a video or drop it here';
+  document.getElementById('file-hint').textContent = file ? `${(file.size / (1024 * 1024)).toFixed(1)} MB` : 'Up to 5 GB';
+}
+
+fileInput.addEventListener('change', showFile);
+for (const name of ['dragenter', 'dragover']) drop.addEventListener(name, () => drop.classList.add('over'));
+for (const name of ['dragleave', 'drop']) drop.addEventListener(name, () => drop.classList.remove('over'));
 
 // fetch cannot report upload progress, so the PUT uses XMLHttpRequest.
 function put(url, headers, file) {
@@ -34,7 +63,11 @@ function put(url, headers, file) {
     const xhr = new XMLHttpRequest();
     xhr.open('PUT', url);
     for (const [name, value] of Object.entries(headers)) xhr.setRequestHeader(name, value);
-    xhr.upload.onprogress = e => { progress.value = e.loaded / e.total * 100; };
+    xhr.upload.onprogress = e => {
+      const percent = Math.round(e.loaded / e.total * 100);
+      bar.style.width = `${percent}%`;
+      status.textContent = `Uploading… ${percent}%`;
+    };
     xhr.onload = () => xhr.status < 300 ? resolve() : reject(new Error(`upload failed (${xhr.status})`));
     xhr.onerror = () => reject(new Error('upload failed: could not reach storage'));
     xhr.send(file);
