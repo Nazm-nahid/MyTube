@@ -15,7 +15,7 @@
 <p><a href="/upload.html">Upload a video</a></p>
 <table hidden id="table">
   <thead>
-    <tr><th>Title</th><th>Description</th><th>Filename</th><th>Size</th><th>Uploaded</th></tr>
+    <tr><th>Title</th><th>Description</th><th>Filename</th><th>Size</th><th>Uploaded</th><th></th></tr>
   </thead>
   <tbody id="rows"></tbody>
 </table>
@@ -39,6 +39,10 @@ async function load() {
       const row = rows.insertRow();
       const cells = [v.title, v.description, v.filename, formatSize(v.size_bytes), new Date(v.created_at).toLocaleString()];
       for (const text of cells) row.insertCell().textContent = text;
+      const play = document.createElement('a');
+      play.href = `/watch.html?${new URLSearchParams({ id: v.id, title: v.title })}`;
+      play.textContent = 'Play';
+      row.insertCell().append(play);
     }
     table.hidden = body.length === 0;
     status.textContent = body.length === 0 ? 'No videos yet.' : '';

@@ -2,11 +2,18 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"cloud.google.com/go/storage"
 )
+
+// Players keep using the URL for later range requests, so it has to outlast a
+// long video.
+const streamURLTTL = 6 * time.Hour
+
+var errNotFound = errors.New("video not found")
 
 type Storage struct {
 	client *storage.Client
@@ -48,4 +55,20 @@ func (s *Storage) SignUpload(key, contentType string, size int64) (string, map[s
 		"x-goog-content-length-range": sizeRange,
 	}
 	return url, headers, expiresAt, nil
+}
+
+// SignStream signs a GET for an uploaded object, or returns errNotFound if the
+// upload never finished.
+func (s *Storage) SignStream(ctx context.Context, key string) (string, error) {
+	if _, err := s.bucket.Object(key).Attrs(ctx); err != nil {
+		if errors.Is(err, storage.ErrObjectNotExist) {
+			return "", errNotFound
+		}
+		return "", err
+	}
+	return s.bucket.SignedURL(key, &storage.SignedURLOptions{
+		Scheme:  storage.SigningSchemeV4,
+		Method:  "GET",
+		Expires: time.Now().Add(streamURLTTL),
+	})
 }

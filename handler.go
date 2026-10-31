@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -23,6 +24,7 @@ func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /videos", s.createVideo)
 	mux.HandleFunc("GET /videos", s.listVideos)
+	mux.HandleFunc("GET /videos/{id}/stream", s.streamVideo)
 	mux.Handle("GET /", http.FileServerFS(webFS()))
 	return mux
 }
@@ -99,6 +101,26 @@ func (s *Server) listVideos(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, videos)
+}
+
+// streamVideo redirects to Cloud Storage, which serves the range requests that
+// players use to seek, so video bytes never pass through the API.
+func (s *Server) streamVideo(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, errNotFound.Error())
+		return
+	}
+	url, err := s.storage.SignStream(r.Context(), "videos/"+id.String())
+	if errors.Is(err, errNotFound) {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	if err != nil {
+		internalError(w, "sign stream", err)
+		return
+	}
+	http.Redirect(w, r, url, http.StatusFound)
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Watch video</title>
+<style>
+  body { font: 16px/1.5 system-ui, sans-serif; max-width: 48rem; margin: 3rem auto; padding: 0 1rem; }
+  video { width: 100%; background: #000; }
+</style>
+</head>
+<body>
+<h1 id="title">Video</h1>
+<p><a href="/">Back to videos</a></p>
+<video id="player" controls></video>
+<p id="status" role="status"></p>
+<script>
+const params = new URLSearchParams(location.search);
+const player = document.getElementById('player');
+
+document.getElementById('title').textContent = params.get('title') || 'Video';
+player.onerror = () => {
+  player.hidden = true;
+  document.getElementById('status').textContent =
+    'This video cannot be played. The upload may not have finished, or this browser may not support its format.';
+};
+player.src = `/videos/${encodeURIComponent(params.get('id'))}/stream`;
+</script>
+</body>
+</html>
