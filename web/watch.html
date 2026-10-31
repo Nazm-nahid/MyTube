@@ -16,7 +16,7 @@
       <svg viewBox="0 0 36 26" aria-hidden="true"><rect width="36" height="26" rx="6" fill="#006a4e"/><circle cx="16" cy="13" r="8.5" fill="#f42a41"/><path d="M13 8.5v9l7-4.5z" fill="#fff"/></svg>
       <b>Bangla<span>Tube</span></b>
     </a>
-    <a class="button" href="/upload.html">Upload</a>
+    <div class="nav-actions"><div class="account" id="account"></div><a class="button" href="/upload.html">Upload</a></div>
   </div>
 </header>
 <main>
@@ -25,6 +25,7 @@
   <p class="status" id="status" role="status"></p>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js"></script>
+<script src="/app.js"></script>
 <script>
 const params = new URLSearchParams(location.search);
 const player = document.getElementById('player');

@@ -20,10 +20,15 @@ const hlsManifest = "manifest.m3u8"
 type Server struct {
 	store   *Store
 	storage *Storage
+	auth    *Auth
 }
 
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /auth/google", s.signIn)
+	mux.HandleFunc("GET /auth/google/callback", s.signInCallback)
+	mux.HandleFunc("POST /auth/logout", s.signOut)
+	mux.HandleFunc("GET /me", s.me)
 	mux.HandleFunc("POST /videos", s.createVideo)
 	mux.HandleFunc("GET /videos", s.listVideos)
 	mux.HandleFunc("GET /videos/{id}/stream", s.streamVideo)
@@ -70,6 +75,16 @@ func (r createVideoRequest) validate() string {
 }
 
 func (s *Server) createVideo(w http.ResponseWriter, r *http.Request) {
+	user, err := s.currentUser(r)
+	if errors.Is(err, errSignInRequired) {
+		writeError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	if err != nil {
+		internalError(w, "load user", err)
+		return
+	}
+
 	var req createVideoRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
@@ -96,7 +111,7 @@ func (s *Server) createVideo(w http.ResponseWriter, r *http.Request) {
 		internalError(w, "sign upload", err)
 		return
 	}
-	if err := s.store.Create(r.Context(), v); err != nil {
+	if err := s.store.Create(r.Context(), v, user.ID); err != nil {
 		internalError(w, "create video", err)
 		return
 	}

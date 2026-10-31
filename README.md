@@ -161,12 +161,14 @@ seconds, and recovers from media errors.
 | `handler.go` | HTTP routes, validation and JSON responses |
 | `store.go` | Postgres queries |
 | `gcs.go` | Signed URLs and object reads |
+| `auth.go` | Google sign-in and sessions |
 | `schema.sql` | Table definition, applied at startup |
 | `transcode.workflow.yaml` | Cloud Workflow that starts transcoding jobs |
 | `web/index.html` | Video list |
 | `web/upload.html` | Upload screen |
 | `web/watch.html` | Video player |
 | `web/app.css` | Shared styles for the web pages |
+| `web/app.js` | Account controls shared by the web pages |
 | `docker-compose.yml` | Local Postgres |
 | `.env.example` | Example settings |
 
@@ -198,7 +200,8 @@ so restart the server after changing them.
 
 ### `POST /videos`
 
-Saves metadata and returns a signed upload URL.
+Requires sign-in, and returns `401` without a valid session. Saves metadata and
+returns a signed upload URL.
 
 ```sh
 curl -X POST localhost:8080/videos -d '{
@@ -247,6 +250,15 @@ curl -X PUT \
   -H 'x-goog-content-length-range: 1048576,1048576' \
   --data-binary @clip.mp4 "$UPLOAD_URL"
 ```
+
+### Sign-in
+
+| Route | Purpose |
+|---|---|
+| `GET /auth/google?next=/path` | Starts Google sign-in, then returns to `next` |
+| `GET /auth/google/callback` | Google redirects back here |
+| `POST /auth/logout` | Ends the session |
+| `GET /me` | Current user's `email`, `name` and `picture`, or `401` |
 
 ### `GET /videos`
 
@@ -304,6 +316,9 @@ URL, or a signed GCS URL when `CDN_URL` is not set.
 | `content_type` | `TEXT` | Must start with `video/` |
 | `size_bytes` | `BIGINT` | Exact upload size |
 | `created_at` | `TIMESTAMPTZ` | Set by Postgres |
+| `user_id` | `UUID` | Uploader, empty for videos from before sign-in |
+
+`users` holds Google profiles, and `sessions` holds a hash of each session token.
 
 Object paths come from the video ID, so they are not stored in the table.
 
@@ -318,6 +333,9 @@ Object paths come from the video ID, so they are not stored in the table.
 | `CDN_URL` | None | CDN base URL. Without it, playback uses signed GCS URLs |
 | `CDN_KEY_NAME` | None, required with `CDN_URL` | Signing key name on the backend bucket |
 | `CDN_KEY` | None, required with `CDN_URL` | URL-safe base64 signing key. Keep it secret |
+| `GOOGLE_CLIENT_ID` | None | OAuth client ID. Without it, nobody can sign in or upload |
+| `GOOGLE_CLIENT_SECRET` | None, required with the client ID | OAuth client secret. Keep it secret |
+| `BASE_URL` | None, required with the client ID | Address users reach the site on, used for the sign-in redirect |
 
 ## Bucket layout
 
@@ -443,6 +461,22 @@ A new service agent can take a few minutes to appear in IAM. If a grant says it
 does not exist, wait and run the command again. A new trigger can take up to 2
 minutes to become active.
 
+### Google sign-in
+
+In the Console, open **Google Auth Platform**, set up the consent screen, and
+create a **Web application** client. Add this authorized redirect URI:
+
+```
+<BASE_URL>/auth/google/callback
+```
+
+Use `http://localhost:8080` as `BASE_URL` locally. Anywhere else, Google needs a
+domain name with HTTPS, so sign-in cannot work on a raw IP address. While the
+consent screen is in testing, only the listed test users can sign in.
+
+Moving the site to HTTPS also means giving the CDN HTTPS, because browsers block
+HTTP video on an HTTPS page, and adding the new origin to the bucket's CORS.
+
 ### Cloud CDN
 
 Playback goes through a load balancer with a CDN backend bucket. Adding a signing
@@ -506,7 +540,7 @@ local IP address.
 
 ## Limitations
 
-- **No login.** Anyone who can reach the API can upload and play videos.
+- **Playback is public.** Sign-in only protects uploads, and anyone can watch.
 - **Unfinished uploads stay listed.** Metadata is saved first, so a failed upload
   still appears in the list and `stream` returns `404` for it.
 - **Signed playback URLs are shareable.** Anyone with one can use it until it

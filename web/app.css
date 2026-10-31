@@ -78,7 +78,26 @@ a { color: inherit; }
   transition: background .15s, transform .15s;
 }
 .button:hover { background: var(--red); transform: translateY(-1px); }
+.button-quiet { background: var(--surface-2); }
+.button-quiet:hover { background: var(--border); }
 .button:disabled { background: var(--surface-2); color: var(--muted); cursor: not-allowed; transform: none; }
+
+.nav-actions { display: flex; align-items: center; gap: .6rem; min-width: 0; }
+.account { display: flex; align-items: center; gap: .6rem; min-width: 0; }
+.avatar { width: 2rem; height: 2rem; border-radius: 50%; flex: none; }
+.account-name { max-width: 10rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+.signin { text-align: center; }
+.signin h2 { margin: 0; font-size: 1.4rem; }
+.signin p { margin: .4rem 0 1.25rem; color: var(--muted); }
+.google { color: #1f1f1f; background: #fff; }
+.google:hover { background: #e9efeb; }
+.google svg { width: 1.2rem; height: 1.2rem; }
+
+@media (max-width: 34rem) {
+  .account-name { display: none; }
+  .nav-actions .button { padding: .5rem .9rem; }
+}
 
 main { max-width: 72rem; margin: 0 auto; padding: 0 1.25rem 4rem; }
 main.narrow { max-width: 38rem; }

@@ -16,6 +16,7 @@
       <svg viewBox="0 0 36 26" aria-hidden="true"><rect width="36" height="26" rx="6" fill="#006a4e"/><circle cx="16" cy="13" r="8.5" fill="#f42a41"/><path d="M13 8.5v9l7-4.5z" fill="#fff"/></svg>
       <b>Bangla<span>Tube</span></b>
     </a>
+    <div class="nav-actions"><div class="account" id="account"></div></div>
   </div>
 </header>
 <main class="narrow">
@@ -23,7 +24,15 @@
     <h1>Upload a <em>video</em></h1>
     <p>Your video is ready to watch as soon as it finishes uploading.</p>
   </section>
-  <form class="panel" id="form">
+  <section class="panel signin" id="signin" hidden>
+    <h2>Sign in to upload</h2>
+    <p>Anyone can watch, but you need an account to share a video.</p>
+    <a class="button google" id="google">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.2C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.9 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.9c-.6 3-2.2 5.5-4.8 7.2l7.7 6c4.5-4.2 7.1-10.3 7.1-17.7z"/><path fill="#FBBC05" d="M10.5 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.2C1 16.5 0 20.1 0 24s1 7.5 2.6 10.8l7.9-6.2z"/><path fill="#34A853" d="M24 48c6.3 0 11.6-2.1 15.5-5.7l-7.7-6c-2.1 1.4-4.8 2.3-7.8 2.3-6.3 0-11.6-4.1-13.5-9.9l-7.9 6.2C6.5 42.6 14.6 48 24 48z"/></svg>
+      Sign in with Google
+    </a>
+  </section>
+  <form class="panel" id="form" hidden>
     <label class="drop" id="drop">
       <input name="file" id="file" type="file" accept="video/*" required>
       <strong id="file-name">Choose a video or drop it here</strong>
@@ -38,6 +47,7 @@
     <p class="status" id="status" role="status"></p>
   </form>
 </main>
+<script src="/app.js"></script>
 <script>
 const form = document.getElementById('form');
 const submit = document.getElementById('submit');
@@ -46,6 +56,13 @@ const bar = document.getElementById('bar');
 const status = document.getElementById('status');
 const drop = document.getElementById('drop');
 const fileInput = document.getElementById('file');
+const signin = document.getElementById('signin');
+
+document.getElementById('google').href = signInURL();
+currentUser.then(user => {
+  form.hidden = !user;
+  signin.hidden = !!user;
+});
 
 function showFile() {
   const file = fileInput.files[0];
@@ -93,6 +110,11 @@ form.addEventListener('submit', async e => {
         size_bytes: file.size,
       }),
     });
+    // The session ran out while this page was open.
+    if (res.status === 401) {
+      location.href = signInURL();
+      return;
+    }
     const body = await res.json();
     if (!res.ok) throw new Error(body.error);
     status.textContent = 'Uploading…';

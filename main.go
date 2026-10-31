@@ -71,9 +71,14 @@ func run() error {
 	}
 	defer storage.Close()
 
+	auth, err := NewAuth(os.Getenv("GOOGLE_CLIENT_ID"), os.Getenv("GOOGLE_CLIENT_SECRET"), os.Getenv("BASE_URL"))
+	if err != nil {
+		return err
+	}
+
 	srv := &http.Server{
 		Addr:              env("ADDR", ":8080"),
-		Handler:           (&Server{store: store, storage: storage}).Routes(),
+		Handler:           (&Server{store: store, storage: storage, auth: auth}).Routes(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
