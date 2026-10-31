@@ -1,0 +1,24 @@
+# Runs for every object created in the bucket. Starts an HLS transcode for new
+# uploads and ignores everything else, including the transcoder's own output.
+main:
+  params: [event]
+  steps:
+    - init:
+        assign:
+          - bucket: ${event.data.bucket}
+          - name: ${event.data.name}
+    - filter:
+        switch:
+          - condition: ${not text.match_regex(name, "^videos/[^/]+$")}
+            return: ignored
+    - transcode:
+        call: googleapis.transcoder.v1.projects.locations.jobs.create
+        args:
+          parent: ${"projects/" + sys.get_env("GOOGLE_CLOUD_PROJECT_ID") + "/locations/" + sys.get_env("GOOGLE_CLOUD_LOCATION")}
+          body:
+            inputUri: ${"gs://" + bucket + "/" + name}
+            outputUri: ${"gs://" + bucket + "/transcoded/" + text.split(name, "/")[1] + "/"}
+            templateId: preset/web-hd
+        result: job
+    - done:
+        return: ${job.name}

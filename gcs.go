@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"cloud.google.com/go/storage"
@@ -57,15 +58,8 @@ func (s *Storage) SignUpload(key, contentType string, size int64) (string, map[s
 	return url, headers, expiresAt, nil
 }
 
-// SignStream signs a GET for an uploaded object, or returns errNotFound if the
-// upload never finished.
-func (s *Storage) SignStream(ctx context.Context, key string) (string, time.Time, error) {
-	if _, err := s.bucket.Object(key).Attrs(ctx); err != nil {
-		if errors.Is(err, storage.ErrObjectNotExist) {
-			return "", time.Time{}, errNotFound
-		}
-		return "", time.Time{}, err
-	}
+// SignRead signs a GET. It does not check that the object exists.
+func (s *Storage) SignRead(key string) (string, time.Time, error) {
 	expiresAt := time.Now().Add(streamURLTTL)
 	url, err := s.bucket.SignedURL(key, &storage.SignedURLOptions{
 		Scheme:  storage.SigningSchemeV4,
@@ -76,4 +70,25 @@ func (s *Storage) SignStream(ctx context.Context, key string) (string, time.Time
 		return "", time.Time{}, err
 	}
 	return url, expiresAt, nil
+}
+
+func (s *Storage) Exists(ctx context.Context, key string) (bool, error) {
+	_, err := s.bucket.Object(key).Attrs(ctx)
+	if errors.Is(err, storage.ErrObjectNotExist) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+// Read returns the object's contents, or errNotFound if it does not exist.
+func (s *Storage) Read(ctx context.Context, key string) ([]byte, error) {
+	r, err := s.bucket.Object(key).NewReader(ctx)
+	if errors.Is(err, storage.ErrObjectNotExist) {
+		return nil, errNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	return io.ReadAll(r)
 }

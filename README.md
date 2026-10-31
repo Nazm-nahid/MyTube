@@ -61,11 +61,42 @@ Returns `200` with all videos, newest first.
 curl localhost:8080/videos/$ID/stream
 ```
 
-Returns `200` with `stream_url`, a signed Cloud Storage URL that lasts 6 hours,
-and `expires_at`. Use `stream_url` as the player's source. Cloud Storage serves
-the range requests players use to seek. Returns `404` if the video was never
-uploaded. Files play as uploaded, so a browser can only play formats it
-supports.
+Returns `200` with `stream_url` and `format`, or `404` if the video was never
+uploaded.
+
+- `hls`: transcoding has finished, and `stream_url` is the HLS playlist.
+- `file`: transcoding has not finished, and `stream_url` is a signed URL for the
+  original file that lasts 6 hours, given in `expires_at`. A browser can only
+  play this if it supports the format.
+
+### `GET /videos/{id}/hls/{path}`
+
+Used by the player. Playlists are served by the API, and segments redirect with
+`302` to a signed Cloud Storage URL.
+
+## Transcoding
+
+Each upload to `videos/<id>` triggers `transcode.workflow.yaml` through Eventarc.
+The workflow starts a Transcoder API job that writes HLS to `transcoded/<id>/`.
+Transcoder jobs are billed by minutes of output video.
+
+To set it up, give the Transcoder service agent `roles/storage.objectAdmin` on
+the bucket and the Cloud Storage service agent `roles/pubsub.publisher` on the
+project. Create a `video-transcode` service account with
+`roles/transcoder.editor`, `roles/eventarc.eventReceiver`,
+`roles/workflows.invoker` and `roles/logging.logWriter`, then run:
+
+```sh
+SA=video-transcode@$PROJECT.iam.gserviceaccount.com
+
+gcloud workflows deploy video-transcode --location=asia-south1 \
+  --source=transcode.workflow.yaml --service-account=$SA
+
+gcloud eventarc triggers create video-uploaded --location=asia-south1 \
+  --destination-workflow=video-transcode --destination-workflow-location=asia-south1 \
+  --event-filters=type=google.cloud.storage.object.v1.finalized \
+  --event-filters=bucket=$BUCKET --service-account=$SA
+```
 
 ## Google Cloud Storage setup
 
@@ -97,8 +128,8 @@ For browser uploads, save this as `cors.json`:
 ```json
 [{
   "origin": ["http://localhost:8080"],
-  "method": ["PUT"],
-  "responseHeader": ["Content-Type", "x-goog-content-length-range"],
+  "method": ["GET", "HEAD", "PUT"],
+  "responseHeader": ["Content-Type", "Range", "x-goog-content-length-range"],
   "maxAgeSeconds": 3600
 }]
 ```

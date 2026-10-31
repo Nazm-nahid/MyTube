@@ -15,6 +15,8 @@ import (
 // resumable uploads.
 const maxVideoBytes = 5 << 30
 
+const hlsManifest = "manifest.m3u8"
+
 type Server struct {
 	store   *Store
 	storage *Storage
@@ -25,6 +27,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /videos", s.createVideo)
 	mux.HandleFunc("GET /videos", s.listVideos)
 	mux.HandleFunc("GET /videos/{id}/stream", s.streamVideo)
+	mux.HandleFunc("GET /videos/{id}/hls/{path...}", s.hlsFile)
 	mux.Handle("GET /", http.FileServerFS(webFS()))
 	return mux
 }
@@ -46,7 +49,8 @@ type createVideoResponse struct {
 
 type streamVideoResponse struct {
 	StreamURL string    `json:"stream_url"`
-	ExpiresAt time.Time `json:"expires_at"`
+	Format    string    `json:"format"`
+	ExpiresAt time.Time `json:"expires_at,omitzero"`
 }
 
 func (r createVideoRequest) validate() string {
@@ -108,24 +112,85 @@ func (s *Server) listVideos(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, videos)
 }
 
-// streamVideo returns a signed Cloud Storage URL. Cloud Storage serves the range
-// requests that players use to seek, so video bytes never pass through the API.
+// streamVideo returns the HLS playlist once transcoding has finished, and a
+// signed URL for the original file until then.
 func (s *Server) streamVideo(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		writeError(w, http.StatusNotFound, errNotFound.Error())
 		return
 	}
-	url, expiresAt, err := s.storage.SignStream(r.Context(), "videos/"+id.String())
-	if errors.Is(err, errNotFound) {
-		writeError(w, http.StatusNotFound, err.Error())
+
+	hls, err := s.storage.Exists(r.Context(), hlsKey(id, hlsManifest))
+	if err != nil {
+		internalError(w, "check hls manifest", err)
 		return
 	}
+	if hls {
+		writeJSON(w, http.StatusOK, streamVideoResponse{
+			StreamURL: "/videos/" + id.String() + "/hls/" + hlsManifest,
+			Format:    "hls",
+		})
+		return
+	}
+
+	key := "videos/" + id.String()
+	uploaded, err := s.storage.Exists(r.Context(), key)
+	if err != nil {
+		internalError(w, "check video", err)
+		return
+	}
+	if !uploaded {
+		writeError(w, http.StatusNotFound, errNotFound.Error())
+		return
+	}
+	url, expiresAt, err := s.storage.SignRead(key)
 	if err != nil {
 		internalError(w, "sign stream", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, streamVideoResponse{StreamURL: url, ExpiresAt: expiresAt})
+	writeJSON(w, http.StatusOK, streamVideoResponse{StreamURL: url, Format: "file", ExpiresAt: expiresAt})
+}
+
+// hlsFile serves playlists itself, because a player resolves their relative
+// segment paths against the URL it fetched them from. A redirect would point
+// those paths at unsigned bucket URLs. Segments redirect to a signed URL, so
+// video bytes never pass through the API.
+func (s *Server) hlsFile(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, errNotFound.Error())
+		return
+	}
+	key := hlsKey(id, r.PathValue("path"))
+
+	if strings.HasSuffix(key, ".m3u8") {
+		playlist, err := s.storage.Read(r.Context(), key)
+		if errors.Is(err, errNotFound) {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		if err != nil {
+			internalError(w, "read playlist", err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		if _, err := w.Write(playlist); err != nil {
+			slog.Error("write playlist", "err", err)
+		}
+		return
+	}
+
+	url, _, err := s.storage.SignRead(key)
+	if err != nil {
+		internalError(w, "sign segment", err)
+		return
+	}
+	http.Redirect(w, r, url, http.StatusFound)
+}
+
+func hlsKey(id uuid.UUID, path string) string {
+	return "transcoded/" + id.String() + "/" + path
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {

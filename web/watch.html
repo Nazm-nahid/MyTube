@@ -14,6 +14,7 @@
 <p><a href="/">Back to videos</a></p>
 <video id="player" controls></video>
 <p id="status" role="status"></p>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js"></script>
 <script>
 const params = new URLSearchParams(location.search);
 const player = document.getElementById('player');
@@ -32,7 +33,17 @@ async function load() {
     const body = await res.json();
     if (!res.ok) throw new Error(res.status === 404 ? 'This video was never uploaded.' : body.error);
     player.onerror = () => fail('This browser cannot play this video format.');
-    player.src = body.stream_url;
+    // Safari plays HLS natively. Other browsers need hls.js.
+    if (body.format === 'hls' && !player.canPlayType('application/vnd.apple.mpegurl')) {
+      const hls = new Hls();
+      hls.on(Hls.Events.ERROR, (_, data) => {
+        if (data.fatal) fail('This video could not be loaded.');
+      });
+      hls.loadSource(body.stream_url);
+      hls.attachMedia(player);
+    } else {
+      player.src = body.stream_url;
+    }
   } catch (err) {
     fail(err.message);
   }
