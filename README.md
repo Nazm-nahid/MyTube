@@ -58,13 +58,14 @@ Returns `200` with all videos, newest first.
 ### `GET /videos/{id}/stream`
 
 ```sh
-curl -L -r 0-1023 -o part.mp4 localhost:8080/videos/$ID/stream
+curl localhost:8080/videos/$ID/stream
 ```
 
-Redirects with `302` to a signed Cloud Storage URL that lasts 6 hours. Cloud
-Storage serves the range requests players use to seek. Returns `404` if the
-video was never uploaded. Files play as uploaded, so a browser can only play
-formats it supports.
+Returns `200` with `stream_url`, a signed Cloud Storage URL that lasts 6 hours,
+and `expires_at`. Use `stream_url` as the player's source. Cloud Storage serves
+the range requests players use to seek. Returns `404` if the video was never
+uploaded. Files play as uploaded, so a browser can only play formats it
+supports.
 
 ## Google Cloud Storage setup
 

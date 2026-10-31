@@ -44,6 +44,11 @@ type createVideoResponse struct {
 	ExpiresAt     time.Time         `json:"expires_at"`
 }
 
+type streamVideoResponse struct {
+	StreamURL string    `json:"stream_url"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
 func (r createVideoRequest) validate() string {
 	switch {
 	case strings.TrimSpace(r.Title) == "":
@@ -103,15 +108,15 @@ func (s *Server) listVideos(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, videos)
 }
 
-// streamVideo redirects to Cloud Storage, which serves the range requests that
-// players use to seek, so video bytes never pass through the API.
+// streamVideo returns a signed Cloud Storage URL. Cloud Storage serves the range
+// requests that players use to seek, so video bytes never pass through the API.
 func (s *Server) streamVideo(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		writeError(w, http.StatusNotFound, errNotFound.Error())
 		return
 	}
-	url, err := s.storage.SignStream(r.Context(), "videos/"+id.String())
+	url, expiresAt, err := s.storage.SignStream(r.Context(), "videos/"+id.String())
 	if errors.Is(err, errNotFound) {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
@@ -120,7 +125,7 @@ func (s *Server) streamVideo(w http.ResponseWriter, r *http.Request) {
 		internalError(w, "sign stream", err)
 		return
 	}
-	http.Redirect(w, r, url, http.StatusFound)
+	writeJSON(w, http.StatusOK, streamVideoResponse{StreamURL: url, ExpiresAt: expiresAt})
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {

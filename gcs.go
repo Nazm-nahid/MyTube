@@ -59,16 +59,21 @@ func (s *Storage) SignUpload(key, contentType string, size int64) (string, map[s
 
 // SignStream signs a GET for an uploaded object, or returns errNotFound if the
 // upload never finished.
-func (s *Storage) SignStream(ctx context.Context, key string) (string, error) {
+func (s *Storage) SignStream(ctx context.Context, key string) (string, time.Time, error) {
 	if _, err := s.bucket.Object(key).Attrs(ctx); err != nil {
 		if errors.Is(err, storage.ErrObjectNotExist) {
-			return "", errNotFound
+			return "", time.Time{}, errNotFound
 		}
-		return "", err
+		return "", time.Time{}, err
 	}
-	return s.bucket.SignedURL(key, &storage.SignedURLOptions{
+	expiresAt := time.Now().Add(streamURLTTL)
+	url, err := s.bucket.SignedURL(key, &storage.SignedURLOptions{
 		Scheme:  storage.SigningSchemeV4,
 		Method:  "GET",
-		Expires: time.Now().Add(streamURLTTL),
+		Expires: expiresAt,
 	})
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	return url, expiresAt, nil
 }
