@@ -20,15 +20,17 @@ type Storage struct {
 	client *storage.Client
 	bucket *storage.BucketHandle
 	ttl    time.Duration
+	cdn    *CDN
 }
 
-// NewStorage uses Application Default Credentials.
-func NewStorage(ctx context.Context, bucket string, ttl time.Duration) (*Storage, error) {
+// NewStorage uses Application Default Credentials. A nil cdn signs reads with
+// GCS instead.
+func NewStorage(ctx context.Context, bucket string, ttl time.Duration, cdn *CDN) (*Storage, error) {
 	client, err := storage.NewClient(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return &Storage{client: client, bucket: client.Bucket(bucket), ttl: ttl}, nil
+	return &Storage{client: client, bucket: client.Bucket(bucket), ttl: ttl, cdn: cdn}, nil
 }
 
 func (s *Storage) Close() error {
@@ -61,6 +63,9 @@ func (s *Storage) SignUpload(key, contentType string, size int64) (string, map[s
 // SignRead signs a GET. It does not check that the object exists.
 func (s *Storage) SignRead(key string) (string, time.Time, error) {
 	expiresAt := time.Now().Add(streamURLTTL)
+	if s.cdn != nil {
+		return s.cdn.Sign(key, expiresAt), expiresAt, nil
+	}
 	url, err := s.bucket.SignedURL(key, &storage.SignedURLOptions{
 		Scheme:  storage.SigningSchemeV4,
 		Method:  "GET",

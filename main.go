@@ -60,7 +60,12 @@ func run() error {
 		return err
 	}
 
-	storage, err := NewStorage(ctx, bucket, ttl)
+	cdn, err := NewCDN(os.Getenv("CDN_URL"), os.Getenv("CDN_KEY_NAME"), os.Getenv("CDN_KEY"))
+	if err != nil {
+		return err
+	}
+
+	storage, err := NewStorage(ctx, bucket, ttl, cdn)
 	if err != nil {
 		return err
 	}

@@ -53,16 +53,19 @@ GCS bucket <--(HLS files in transcoded/<id>/)----- Transcoder API job
 ### Playback
 
 ```
-Browser                         API                     GCS bucket
+Browser                         API                     Cloud CDN / GCS bucket
    |-- GET /videos/{id}/stream -->|                         |
    |<-- stream_url, format -------|                         |
    |-- GET .../hls/manifest.m3u8->|-- read playlist ------->|
    |<-- playlist -----------------|                         |
-   |-- GET .../hls/<segment> ---->|-- sign GET URL          |
+   |-- GET .../hls/<segment> ---->|-- sign CDN URL          |
    |<-- 302 to signed URL --------|                         |
    |-- GET signed URL --------------------------------->    |
-   |<-- video bytes ----------------------------------------|
+   |<-- video bytes, from cache or the bucket --------------|
 ```
+
+Without `CDN_URL`, as in local development, the API signs GCS URLs instead and
+the browser reads directly from the bucket.
 
 ## How the project was built
 
@@ -284,8 +287,8 @@ Returns `404` if the video was never uploaded.
 ### `GET /videos/{id}/hls/{path}`
 
 Used by HLS players. `.m3u8` playlists are served by the API with
-`application/vnd.apple.mpegurl`. Other files redirect with `302` to a signed GCS
-URL.
+`application/vnd.apple.mpegurl`. Other files redirect with `302` to a signed CDN
+URL, or a signed GCS URL when `CDN_URL` is not set.
 
 ## Data model
 
@@ -311,6 +314,9 @@ Object paths come from the video ID, so they are not stored in the table.
 | `DATABASE_URL` | Local Compose database | Postgres connection |
 | `GCS_BUCKET` | None, required | Bucket name |
 | `UPLOAD_URL_TTL` | `15m` | How long upload URLs last |
+| `CDN_URL` | None | CDN base URL. Without it, playback uses signed GCS URLs |
+| `CDN_KEY_NAME` | None, required with `CDN_URL` | Signing key name on the backend bucket |
+| `CDN_KEY` | None, required with `CDN_URL` | URL-safe base64 signing key. Keep it secret |
 
 ## Bucket layout
 
@@ -436,6 +442,38 @@ A new service agent can take a few minutes to appear in IAM. If a grant says it
 does not exist, wait and run the command again. A new trigger can take up to 2
 minutes to become active.
 
+### Cloud CDN
+
+Playback goes through a load balancer with a CDN backend bucket. Adding a signing
+key makes the backend reject unsigned requests, so the bucket stays private.
+
+```bash
+PROJECT_NUMBER=$(gcloud projects describe $PROJECT --format='value(projectNumber)')
+
+umask 077
+head -c 16 /dev/urandom | base64 | tr '+/' '-_' | tr -d '\n' > cdn.key
+
+gcloud compute addresses create video-cdn-ip --global
+gcloud compute backend-buckets create video-cdn-backend --gcs-bucket-name=$BUCKET \
+  --enable-cdn --cache-mode=FORCE_CACHE_ALL --default-ttl=86400 \
+  --signed-url-cache-max-age=86400
+gcloud compute backend-buckets add-signed-url-key video-cdn-backend \
+  --key-name=video-cdn-key --key-file=cdn.key
+gcloud compute url-maps create video-cdn-map --default-backend-bucket=video-cdn-backend
+gcloud compute target-http-proxies create video-cdn-proxy --url-map=video-cdn-map
+gcloud compute forwarding-rules create video-cdn-fr --global --address=video-cdn-ip \
+  --target-http-proxy=video-cdn-proxy --ports=80
+
+# Lets Cloud CDN read objects from the private bucket.
+gcloud storage buckets add-iam-policy-binding gs://$BUCKET \
+  --member=serviceAccount:service-$PROJECT_NUMBER@cloud-cdn-fill.iam.gserviceaccount.com \
+  --role=roles/storage.objectViewer
+```
+
+Set `CDN_URL=http://<address>`, `CDN_KEY_NAME=video-cdn-key` and `CDN_KEY` to the
+contents of `cdn.key`, then delete `cdn.key`. A new load balancer can take a few
+minutes to start serving.
+
 ## Play in an external media player
 
 Open the HLS playlist as a network stream in VLC or mpv while the server is
@@ -483,8 +521,10 @@ local IP address.
   video, and storage and network use are also billed.
 - **Extra workflow runs.** The trigger fires for every Transcoder output file.
   Those runs do nothing and finish as `SUCCEEDED`.
-- **API load.** Each HLS segment request calls the API for a signed URL, and a CDN
-  would suit real traffic better.
+- **API load.** The CDN serves video bytes, but playlists and each segment's
+  signed URL still come from the API.
+- **CDN uses HTTP.** It has no certificate, so a page served over HTTPS could not
+  load video from it.
 - **Failed jobs are not reported.** The video keeps playing as the original file.
 - **`hls.js` comes from a CDN.** The watch page needs internet access for it.
 
