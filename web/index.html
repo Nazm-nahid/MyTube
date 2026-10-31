@@ -41,12 +41,60 @@ function formatSize(bytes) {
   return mb < 1 ? `${bytes} bytes` : `${mb.toFixed(1)} MB`;
 }
 
-// There are no thumbnails yet, so each video gets its own placement of the
-// flag's circle, taken from its ID so it stays the same between visits.
+// Videos that cannot show a thumbnail get the flag's circle instead, placed from
+// the ID so it stays the same between visits.
 function placeCircle(thumb, id) {
   const n = parseInt(id.slice(0, 4), 16);
   thumb.style.setProperty('--dot-x', `${30 + n % 40}%`);
   thumb.style.setProperty('--dot-y', `${42 + (n >> 6) % 16}%`);
+}
+
+// The thumbnail is the video's first frame. Safari only paints a frame after a
+// seek, so this is just past zero rather than exactly zero.
+const firstFrame = 0.001;
+
+// Waits until a card is near the screen, so a long list does not fetch every
+// video at once.
+const previews = new IntersectionObserver(entries => {
+  for (const entry of entries) {
+    if (!entry.isIntersecting) continue;
+    previews.unobserve(entry.target);
+    entry.target.src = `/videos/${entry.target.dataset.id}/hls/sd.mp4#t=${firstFrame}`;
+  }
+}, { rootMargin: '200px' });
+
+// sd.mp4 only exists once transcoding has finished. Until then the original file
+// is used, which a browser may not be able to play.
+async function useOriginal(video) {
+  video.onerror = () => video.remove();
+  try {
+    const res = await fetch(`/videos/${video.dataset.id}/stream`);
+    const body = await res.json();
+    if (!res.ok || body.format !== 'file') throw new Error(body.error);
+    video.src = `${body.stream_url}#t=${firstFrame}`;
+  } catch {
+    video.remove();
+  }
+}
+
+function addPreview(link, id) {
+  const thumb = link.querySelector('.thumb');
+  const video = document.createElement('video');
+  video.dataset.id = id;
+  video.muted = true;
+  video.loop = true;
+  video.playsInline = true;
+  video.preload = 'metadata';
+  video.onerror = () => useOriginal(video);
+  video.addEventListener('loadeddata', () => thumb.classList.add('has-preview'), { once: true });
+  thumb.prepend(video);
+  previews.observe(video);
+
+  link.addEventListener('mouseenter', () => video.play().catch(() => {}));
+  link.addEventListener('mouseleave', () => {
+    video.pause();
+    video.currentTime = firstFrame;
+  });
 }
 
 function card(v) {
@@ -57,6 +105,7 @@ function card(v) {
     <div class="thumb"><span class="play"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v18l15-9z"/></svg></span></div>
     <div class="card-body"><h2></h2><p></p><div class="meta"><span></span><span></span><span></span></div></div>`;
   placeCircle(link.querySelector('.thumb'), v.id);
+  addPreview(link, v.id);
   link.querySelector('h2').textContent = v.title;
   const description = link.querySelector('p');
   description.textContent = v.description;
