@@ -1,4 +1,4 @@
-# BanglaTube
+# niga club
 
 A small YouTube-style service written in Go. It stores video metadata in
 Postgres, uploads files directly to a private Google Cloud Storage (GCS) bucket,
